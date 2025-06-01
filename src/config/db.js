@@ -1,22 +1,18 @@
 import mysql from 'mysql2';
-import dotenv from 'dotenv';
-dotenv.config();
-
-console.log("DB_USER:", process.env.DB_USER);
 
 const connection = mysql.createConnection({
-  host: process.env.DB_HOST,
-  user: process.env.DB_USER,
-  password: process.env.DB_PASS,
-  database: process.env.DB_NAME
+  host: process.env.DB_HOST || 'localhost',
+  user: process.env.DB_USER || 'lizy',
+  password: process.env.DB_PASS || '1980',
+  database: process.env.DB_NAME || 'docker',
 });
 
 connection.connect(err => {
   if (err) {
-    console.error('Error connecting to MySQL:', err);
-    return;
+    console.error('Error conectando a la base de datos:', err);
+    process.exit(1);
   }
-  console.log('Connected to MySQL');
+  console.log('Conexión a MySQL exitosa');
 });
 
 export default connection;
