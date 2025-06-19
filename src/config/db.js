@@ -1,22 +1,22 @@
-import mysql from 'mysql2';
+import mysql from 'mysql2/promise';
 import dotenv from 'dotenv';
 dotenv.config();
 
-
-const connection = mysql.createConnection({
-  host: '44.194.97.177',
-  user: 'lizy',
-  password: '1980',
-  database: 'docker',
+export const pool = mysql.createPool({
+  host: process.env.DB_HOST,
+  user: process.env.DB_USER,
+  password: process.env.DB_PASSWORD,
+  database: process.env.DB_NAME,
 });
 
-
-connection.connect(err => {
-  if (err) {
-    console.error('Error conectando a la base de datos:', err);
-    process.exit(1);
+// Verificar conexión al iniciar
+(async () => {
+  try {
+    const connection = await pool.getConnection();
+    console.log('✅ Conectado a la base de datos MySQL');
+    connection.release();
+  } catch (error) {
+    console.error('❌ Error al conectar con la base de datos:', error.message);
+    process.exit(1); // Detiene la app si no se conecta
   }
-  console.log('Conexión a MySQL exitosa');
-});
-
-export default connection;
+})();

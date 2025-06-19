@@ -1,14 +1,16 @@
 import express from 'express';
-import * as serviceController from '../controllers/serviceController.js';
-import { validateServiceInput } from '../middleware/validateServiceInput.js';
+import * as Service from '../controllers/serviceController.js';
 import { authenticateToken } from '../middleware/authMiddleware.js';
 
 const router = express.Router();
 
-router.post('/', authenticateToken, validateServiceInput, serviceController.createService);
-router.get('/', authenticateToken, serviceController.getUserServices);
-router.put('/:id', authenticateToken, validateServiceInput, serviceController.updateService);
-router.delete('/:id', authenticateToken, serviceController.deleteService);
+// Todas las rutas de servicios requieren autenticación
+router.use(authenticateToken);
 
+router.get('/', Service.getAll);
+router.get('/:id', Service.getById);
+router.post('/', Service.create);
+router.put('/:id', Service.update);
+router.delete('/:id', Service.remove);
 
 export default router;
