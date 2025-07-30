@@ -2,9 +2,8 @@ import jwt from 'jsonwebtoken';
 
 export const authenticateToken = (req, res, next) => {
   try {
-    // Obtener el token del header Authorization
     const authHeader = req.headers['authorization'];
-    const token = authHeader && authHeader.split(' ')[1]; // Bearer TOKEN
+    const token = authHeader && authHeader.split(' ')[1];
 
     if (!token) {
       return res.status(401).json({ 
@@ -12,7 +11,6 @@ export const authenticateToken = (req, res, next) => {
       });
     }
 
-    // Verificar el token
     jwt.verify(token, process.env.JWT_SECRET, (err, user) => {
       if (err) {
         if (err.name === 'TokenExpiredError') {
@@ -21,7 +19,6 @@ export const authenticateToken = (req, res, next) => {
         return res.status(403).json({ message: 'Token inválido' });
       }
 
-      // Agregar información del usuario a la request
       req.user = user;
       next();
     });
@@ -32,7 +29,6 @@ export const authenticateToken = (req, res, next) => {
   }
 };
 
-// Middleware opcional para rutas que pueden funcionar con o sin autenticación
 export const optionalAuth = (req, res, next) => {
   const authHeader = req.headers['authorization'];
   const token = authHeader && authHeader.split(' ')[1];

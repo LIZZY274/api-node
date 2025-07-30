@@ -1,177 +1,344 @@
 import * as Service from '../models/Service.js';
 
-const formatDateToReadable = (dateString) => {
+// ✅ NUEVA: Función para convertir fecha DD/MM/YYYY a YYYY-MM-DD
+const convertDateFormat = (dateString) => {
   if (!dateString) return null;
   
-  try {
-    const date = new Date(dateString);
-    const day = date.getDate().toString().padStart(2, '0');
-    const month = (date.getMonth() + 1).toString().padStart(2, '0');
-    const year = date.getFullYear();
-    
-    return `${day}/${month}/${year}`;
-  } catch (error) {
-    console.error('Error formateando fecha:', error);
-    return dateString; 
+  // Si ya está en formato YYYY-MM-DD, no hacer nada
+  if (dateString.match(/^\d{4}-\d{2}-\d{2}$/)) {
+    return dateString;
   }
-};
-
-const formatDateForDatabase = (dateString) => {
-  if (!dateString) return null;
   
-  try {
-
-    if (dateString.includes('/')) {
-      const [day, month, year] = dateString.split('/');
-      return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
-    }
-    
-   
-    return dateString;
-  } catch (error) {
-    console.error('Error convirtiendo fecha para BD:', error);
-    return dateString;
+  // Convertir DD/MM/YYYY a YYYY-MM-DD
+  if (dateString.match(/^\d{2}\/\d{2}\/\d{4}$/)) {
+    const [day, month, year] = dateString.split('/');
+    return `${year}-${month}-${day}`;
   }
+  
+  // Si no coincide con ningún formato, devolver como está
+  console.log('⚠️ Formato de fecha no reconocido:', dateString);
+  return dateString;
 };
 
-export const getAll = async (req, res) => {
+export const getServices = async (req, res) => {
   try {
-    const [rows] = await Service.getAllServices();
-    
- 
-    const servicesWithFormattedData = rows.map(service => ({
-      ...service,
-      fecha: formatDateToReadable(service.fecha), 
-      imagenUrl: service.imagenUrl || null
-    }));
+    const userId = req.user.id; 
+    const [services] = await Service.getServicesByUser(userId);
     
     res.json({
-      message: 'Servicios obtenidos exitosamente',
-      user: req.user.name,
-      data: servicesWithFormattedData
+      success: true,
+      data: services,
+      message: `${services.length} servicios encontrados`
     });
   } catch (error) {
     console.error('Error al obtener servicios:', error);
-    res.status(500).json({ message: 'Error interno del servidor' });
+    res.status(500).json({
+      success: false,
+      message: 'Error interno del servidor'
+    });
   }
 };
 
-export const getById = async (req, res) => {
+export const getService = async (req, res) => {
   try {
-    const [row] = await Service.getServiceById(req.params.id);
-    if (!row.length) {
-      return res.status(404).json({ message: 'Servicio no encontrado' });
+    const { id } = req.params;
+    const userId = req.user.id;
+    
+    const [service] = await Service.getServiceById(id, userId);
+    
+    if (!service.length) {
+      return res.status(404).json({
+        success: false,
+        message: 'Servicio no encontrado'
+      });
     }
     
     res.json({
-      message: 'Servicio encontrado',
-      user: req.user.name,
-      data: {
-        ...row[0],
-        fecha: formatDateToReadable(row[0].fecha), 
-        imagenUrl: row[0].imagenUrl || null
-      }
+      success: true,
+      data: service[0]
     });
   } catch (error) {
     console.error('Error al obtener servicio:', error);
-    res.status(500).json({ message: 'Error interno del servidor' });
+    res.status(500).json({
+      success: false,
+      message: 'Error interno del servidor'
+    });
   }
 };
 
-export const create = async (req, res) => {
+// ✅ ACTUALIZADO: Crear servicio con conversión de fecha
+export const createService = async (req, res) => {
   try {
     const { tipo, fecha, costo, taller, descripcion, imagenUrl } = req.body;
+    const userId = req.user.id;
     
-  
+    // Validaciones
     if (!tipo || !fecha || !costo || !taller) {
-      return res.status(400).json({ 
-        message: 'Campos requeridos: tipo, fecha, costo, taller' 
+      return res.status(400).json({
+        success: false,
+        message: 'Los campos tipo, fecha, costo y taller son requeridos'
       });
     }
-
     
-    const fechaParaBD = formatDateForDatabase(fecha);
-
-    console.log('📸 Datos recibidos:', {
-      tipo,
-      fecha: `${fecha} → ${fechaParaBD}`, 
-      costo,
-      taller,
-      descripcion,
-      imagenUrl: imagenUrl ? 'SÍ tiene imagen' : 'NO tiene imagen'
-    });
-
-    await Service.createService(tipo, fechaParaBD, costo, taller, descripcion, imagenUrl);
+    // ✅ NUEVO: Convertir formato de fecha
+    const fechaConvertida = convertDateFormat(fecha);
+    
+    console.log('📝 Creando servicio para usuario:', userId);
+    console.log('📅 Fecha original:', fecha);
+    console.log('📅 Fecha convertida:', fechaConvertida);
+    console.log('📸 ¿Tiene imagen?', !!imagenUrl);
+    
+    const [result] = await Service.createService(
+      tipo, fechaConvertida, costo, taller, descripcion, imagenUrl, userId
+    );
+    
+    // Obtener el servicio creado
+    const [newService] = await Service.getServiceById(result.insertId, userId);
     
     res.status(201).json({
-      message: 'Servicio creado exitosamente',
-      createdBy: req.user.name,
-      hasImage: !!imagenUrl
+      success: true,
+      data: newService[0],
+      message: 'Servicio creado exitosamente'
     });
   } catch (error) {
     console.error('Error al crear servicio:', error);
-    res.status(500).json({ message: 'Error interno del servidor' });
+    res.status(500).json({
+      success: false,
+      message: 'Error interno del servidor'
+    });
   }
 };
 
-export const update = async (req, res) => {
+// ✅ ACTUALIZADO: Actualizar servicio con conversión de fecha
+export const updateService = async (req, res) => {
   try {
+    const { id } = req.params;
     const { tipo, fecha, costo, taller, descripcion, imagenUrl } = req.body;
+    const userId = req.user.id;
     
-  
-    const [existing] = await Service.getServiceById(req.params.id);
-    if (!existing.length) {
-      return res.status(404).json({ message: 'Servicio no encontrado' });
+    // Verificar que el servicio existe y pertenece al usuario
+    const [existingService] = await Service.getServiceById(id, userId);
+    if (!existingService.length) {
+      return res.status(404).json({
+        success: false,
+        message: 'Servicio no encontrado'
+      });
     }
-
-  
-    const fechaParaBD = fecha ? formatDateForDatabase(fecha) : existing[0].fecha;
     
-   
-    const finalImagenUrl = imagenUrl !== undefined ? imagenUrl : existing[0].imagenUrl;
-
-    console.log('🔄 Actualizando servicio:', {
-      id: req.params.id,
-      fecha: fecha ? `${fecha} → ${fechaParaBD}` : 'Sin cambios',
-      hasImage: !!finalImagenUrl
-    });
-
-    await Service.updateService(
-      req.params.id, 
-      tipo, 
-      fechaParaBD, 
-      costo, 
-      taller, 
-      descripcion, 
-      finalImagenUrl
-    );
+    // ✅ NUEVO: Convertir formato de fecha
+    const fechaConvertida = convertDateFormat(fecha);
+    
+    console.log('📝 Actualizando servicio:', id);
+    console.log('📅 Fecha original:', fecha);
+    console.log('📅 Fecha convertida:', fechaConvertida);
+    
+    await Service.updateService(id, tipo, fechaConvertida, costo, taller, descripcion, imagenUrl, userId);
+    
+    // Obtener el servicio actualizado
+    const [updatedService] = await Service.getServiceById(id, userId);
     
     res.json({
-      message: 'Servicio actualizado exitosamente',
-      updatedBy: req.user.name,
-      hasImage: !!finalImagenUrl
+      success: true,
+      data: updatedService[0],
+      message: 'Servicio actualizado exitosamente'
     });
   } catch (error) {
     console.error('Error al actualizar servicio:', error);
-    res.status(500).json({ message: 'Error interno del servidor' });
+    res.status(500).json({
+      success: false,
+      message: 'Error interno del servidor'
+    });
   }
 };
 
-export const remove = async (req, res) => {
+export const deleteService = async (req, res) => {
   try {
-   
-    const [existing] = await Service.getServiceById(req.params.id);
-    if (!existing.length) {
-      return res.status(404).json({ message: 'Servicio no encontrado' });
+    const { id } = req.params;
+    const userId = req.user.id;
+    
+    // Verificar que el servicio existe y pertenece al usuario
+    const [existingService] = await Service.getServiceById(id, userId);
+    if (!existingService.length) {
+      return res.status(404).json({
+        success: false,
+        message: 'Servicio no encontrado'
+      });
     }
-
-    await Service.deleteService(req.params.id);
+    
+    await Service.deleteService(id, userId);
+    
     res.json({
-      message: 'Servicio eliminado exitosamente',
-      deletedBy: req.user.name
+      success: true,
+      message: 'Servicio eliminado exitosamente'
     });
   } catch (error) {
     console.error('Error al eliminar servicio:', error);
-    res.status(500).json({ message: 'Error interno del servidor' });
+    res.status(500).json({
+      success: false,
+      message: 'Error interno del servidor'
+    });
+  }
+};
+
+export const syncServices = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { lastSync } = req.query;
+    
+    let services;
+    if (lastSync) {
+      [services] = await Service.getServicesModifiedAfter(userId, new Date(parseInt(lastSync)));
+    } else {
+      [services] = await Service.getServicesByUser(userId);
+    }
+    
+    res.json({
+      success: true,
+      data: services,
+      syncTimestamp: Date.now(),
+      message: `${services.length} servicios sincronizados`
+    });
+  } catch (error) {
+    console.error('Error en sincronización:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error en sincronización'
+    });
+  }
+};
+
+// ✅ ACTUALIZADO: Sincronización masiva con conversión de fecha
+export const syncServicesBatch = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { services } = req.body;
+
+    if (!Array.isArray(services) || services.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Se requiere un array de servicios válido'
+      });
+    }
+
+    console.log(`📦 Sincronización masiva: ${services.length} servicios para usuario ${userId}`);
+
+    const results = {
+      created: [],
+      errors: []
+    };
+
+    for (const serviceData of services) {
+      try {
+        const { tipo, fecha, costo, taller, descripcion, imagenUrl, clientId } = serviceData;
+
+        if (!tipo || !fecha || !costo || !taller) {
+          results.errors.push({
+            clientId: clientId || 'unknown',
+            error: 'Campos requeridos faltantes'
+          });
+          continue;
+        }
+
+        // ✅ NUEVO: Convertir formato de fecha
+        const fechaConvertida = convertDateFormat(fecha);
+
+        const [result] = await Service.createService(
+          tipo, fechaConvertida, costo, taller, descripcion, imagenUrl, userId
+        );
+
+        const [newService] = await Service.getServiceById(result.insertId, userId);
+
+        results.created.push({
+          clientId: clientId || 'unknown',
+          serverId: result.insertId,
+          service: newService[0]
+        });
+
+        console.log(`✅ Servicio sincronizado: ${tipo} (Cliente: ${clientId}, Servidor: ${result.insertId})`);
+
+      } catch (error) {
+        console.error(`❌ Error sincronizando servicio:`, error);
+        results.errors.push({
+          clientId: serviceData.clientId || 'unknown',
+          error: error.message
+        });
+      }
+    }
+
+    res.json({
+      success: true,
+      data: results,
+      message: `Sincronización completada: ${results.created.length} creados, ${results.errors.length} errores`,
+      summary: {
+        totalReceived: services.length,
+        created: results.created.length,
+        errors: results.errors.length
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ Error en sincronización masiva:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error interno del servidor en sincronización'
+    });
+  }
+};
+
+export const getSyncStatus = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { lastSync } = req.query;
+
+    let modifiedServices = [];
+    let totalServices = 0;
+
+    const [allServices] = await Service.getServicesByUser(userId);
+    totalServices = allServices.length;
+
+    if (lastSync) {
+      const lastSyncDate = new Date(parseInt(lastSync));
+      [modifiedServices] = await Service.getServicesModifiedAfter(userId, lastSyncDate);
+    }
+
+    res.json({
+      success: true,
+      data: {
+        totalServices,
+        modifiedCount: modifiedServices.length,
+        modifiedServices: modifiedServices,
+        serverTimestamp: Date.now()
+      },
+      message: `Estado de sincronización para usuario ${userId}`
+    });
+
+  } catch (error) {
+    console.error('❌ Error obteniendo estado de sincronización:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error obteniendo estado de sincronización'
+    });
+  }
+};
+
+export const confirmSync = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { syncedIds } = req.body;
+
+    console.log(`✅ Confirmación de sincronización de ${syncedIds?.length || 0} servicios`);
+
+    res.json({
+      success: true,
+      message: 'Sincronización confirmada',
+      timestamp: Date.now()
+    });
+
+  } catch (error) {
+    console.error('❌ Error confirmando sincronización:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error confirmando sincronización'
+    });
   }
 };
