@@ -1,23 +1,59 @@
 import * as Service from '../models/Service.js';
+import * as FCMToken from '../models/FCMtoken.js';
+import * as NotificationSettings from '../models/NotificationSettings.js';
 
-// ✅ NUEVA: Función para convertir fecha DD/MM/YYYY a YYYY-MM-DD
 const convertDateFormat = (dateString) => {
   if (!dateString) return null;
   
-  // Si ya está en formato YYYY-MM-DD, no hacer nada
   if (dateString.match(/^\d{4}-\d{2}-\d{2}$/)) {
     return dateString;
   }
   
-  // Convertir DD/MM/YYYY a YYYY-MM-DD
   if (dateString.match(/^\d{2}\/\d{2}\/\d{4}$/)) {
     const [day, month, year] = dateString.split('/');
     return `${year}-${month}-${day}`;
   }
   
-  // Si no coincide con ningún formato, devolver como está
-  console.log('⚠️ Formato de fecha no reconocido:', dateString);
+  console.log('Formato de fecha no reconocido:', dateString);
   return dateString;
+};
+
+const sendServiceNotification = async (userId, serviceType, action = 'created') => {
+  try {
+    const [settings] = await NotificationSettings.getNotificationSettings(userId);
+    const [tokens] = await FCMToken.getFCMTokensByUserId(userId);
+
+    if (tokens.length === 0) return;
+
+    if (!settings.length || !settings[0].service_reminders) return;
+
+    const title = action === 'created' ? 'Servicio Agregado' : 'Servicio Actualizado';
+    const body = `El servicio '${serviceType}' se ha ${action === 'created' ? 'guardado' : 'actualizado'} exitosamente`;
+
+    console.log(`Enviando notificación de servicio ${action}: ${serviceType} a ${tokens.length} dispositivos`);
+
+  } catch (error) {
+    console.error('Error enviando notificación de servicio:', error);
+  }
+};
+
+const sendSyncNotification = async (userId, syncedCount, errorCount) => {
+  try {
+    const [settings] = await NotificationSettings.getNotificationSettings(userId);
+    const [tokens] = await FCMToken.getFCMTokensByUserId(userId);
+
+    if (tokens.length === 0) return;
+
+    if (!settings.length || !settings[0].sync_notifications) return;
+
+    const title = 'Sincronización Completada';
+    const body = `${syncedCount} servicios sincronizados${errorCount > 0 ? `, ${errorCount} con errores` : ''}`;
+
+    console.log(`Enviando notificación de sync: ${syncedCount} sincronizados, ${errorCount} errores`);
+
+  } catch (error) {
+    console.error('Error enviando notificación de sync:', error);
+  }
 };
 
 export const getServices = async (req, res) => {
@@ -66,13 +102,11 @@ export const getService = async (req, res) => {
   }
 };
 
-// ✅ ACTUALIZADO: Crear servicio con conversión de fecha
 export const createService = async (req, res) => {
   try {
     const { tipo, fecha, costo, taller, descripcion, imagenUrl } = req.body;
     const userId = req.user.id;
     
-    // Validaciones
     if (!tipo || !fecha || !costo || !taller) {
       return res.status(400).json({
         success: false,
@@ -80,20 +114,20 @@ export const createService = async (req, res) => {
       });
     }
     
-    // ✅ NUEVO: Convertir formato de fecha
     const fechaConvertida = convertDateFormat(fecha);
     
-    console.log('📝 Creando servicio para usuario:', userId);
-    console.log('📅 Fecha original:', fecha);
-    console.log('📅 Fecha convertida:', fechaConvertida);
-    console.log('📸 ¿Tiene imagen?', !!imagenUrl);
+    console.log('Creando servicio para usuario:', userId);
+    console.log('Fecha original:', fecha);
+    console.log('Fecha convertida:', fechaConvertida);
+    console.log('Tiene imagen?', !!imagenUrl);
     
     const [result] = await Service.createService(
       tipo, fechaConvertida, costo, taller, descripcion, imagenUrl, userId
     );
     
-    // Obtener el servicio creado
     const [newService] = await Service.getServiceById(result.insertId, userId);
+    
+    await sendServiceNotification(userId, tipo, 'created');
     
     res.status(201).json({
       success: true,
@@ -109,14 +143,12 @@ export const createService = async (req, res) => {
   }
 };
 
-// ✅ ACTUALIZADO: Actualizar servicio con conversión de fecha
 export const updateService = async (req, res) => {
   try {
     const { id } = req.params;
     const { tipo, fecha, costo, taller, descripcion, imagenUrl } = req.body;
     const userId = req.user.id;
     
-    // Verificar que el servicio existe y pertenece al usuario
     const [existingService] = await Service.getServiceById(id, userId);
     if (!existingService.length) {
       return res.status(404).json({
@@ -125,17 +157,17 @@ export const updateService = async (req, res) => {
       });
     }
     
-    // ✅ NUEVO: Convertir formato de fecha
     const fechaConvertida = convertDateFormat(fecha);
     
-    console.log('📝 Actualizando servicio:', id);
-    console.log('📅 Fecha original:', fecha);
-    console.log('📅 Fecha convertida:', fechaConvertida);
+    console.log('Actualizando servicio:', id);
+    console.log('Fecha original:', fecha);
+    console.log('Fecha convertida:', fechaConvertida);
     
     await Service.updateService(id, tipo, fechaConvertida, costo, taller, descripcion, imagenUrl, userId);
     
-    // Obtener el servicio actualizado
     const [updatedService] = await Service.getServiceById(id, userId);
+    
+    await sendServiceNotification(userId, tipo, 'updated');
     
     res.json({
       success: true,
@@ -156,7 +188,6 @@ export const deleteService = async (req, res) => {
     const { id } = req.params;
     const userId = req.user.id;
     
-    // Verificar que el servicio existe y pertenece al usuario
     const [existingService] = await Service.getServiceById(id, userId);
     if (!existingService.length) {
       return res.status(404).json({
@@ -207,7 +238,6 @@ export const syncServices = async (req, res) => {
   }
 };
 
-// ✅ ACTUALIZADO: Sincronización masiva con conversión de fecha
 export const syncServicesBatch = async (req, res) => {
   try {
     const userId = req.user.id;
@@ -220,7 +250,7 @@ export const syncServicesBatch = async (req, res) => {
       });
     }
 
-    console.log(`📦 Sincronización masiva: ${services.length} servicios para usuario ${userId}`);
+    console.log(`Sincronización masiva: ${services.length} servicios para usuario ${userId}`);
 
     const results = {
       created: [],
@@ -238,14 +268,13 @@ export const syncServicesBatch = async (req, res) => {
           });
           continue;
         }
-
-        // ✅ NUEVO: Convertir formato de fecha
+        
         const fechaConvertida = convertDateFormat(fecha);
-
+        
         const [result] = await Service.createService(
           tipo, fechaConvertida, costo, taller, descripcion, imagenUrl, userId
         );
-
+        
         const [newService] = await Service.getServiceById(result.insertId, userId);
 
         results.created.push({
@@ -254,15 +283,19 @@ export const syncServicesBatch = async (req, res) => {
           service: newService[0]
         });
 
-        console.log(`✅ Servicio sincronizado: ${tipo} (Cliente: ${clientId}, Servidor: ${result.insertId})`);
+        console.log(`Servicio sincronizado: ${tipo} (Cliente: ${clientId}, Servidor: ${result.insertId})`);
 
       } catch (error) {
-        console.error(`❌ Error sincronizando servicio:`, error);
+        console.error(`Error sincronizando servicio:`, error);
         results.errors.push({
           clientId: serviceData.clientId || 'unknown',
           error: error.message
         });
       }
+    }
+
+    if (results.created.length > 0) {
+      await sendSyncNotification(userId, results.created.length, results.errors.length);
     }
 
     res.json({
@@ -277,7 +310,7 @@ export const syncServicesBatch = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('❌ Error en sincronización masiva:', error);
+    console.error('Error en sincronización masiva:', error);
     res.status(500).json({
       success: false,
       message: 'Error interno del servidor en sincronización'
@@ -313,7 +346,7 @@ export const getSyncStatus = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('❌ Error obteniendo estado de sincronización:', error);
+    console.error('Error obteniendo estado de sincronización:', error);
     res.status(500).json({
       success: false,
       message: 'Error obteniendo estado de sincronización'
@@ -326,7 +359,7 @@ export const confirmSync = async (req, res) => {
     const userId = req.user.id;
     const { syncedIds } = req.body;
 
-    console.log(`✅ Confirmación de sincronización de ${syncedIds?.length || 0} servicios`);
+    console.log(`Confirmación de sincronización de ${syncedIds?.length || 0} servicios`);
 
     res.json({
       success: true,
@@ -335,7 +368,7 @@ export const confirmSync = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('❌ Error confirmando sincronización:', error);
+    console.error('Error confirmando sincronización:', error);
     res.status(500).json({
       success: false,
       message: 'Error confirmando sincronización'

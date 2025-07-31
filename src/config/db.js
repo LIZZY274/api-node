@@ -9,7 +9,7 @@ export const pool = mysql.createPool({
   database: process.env.DB_NAME,
 });
 
-// Verificar conexión al iniciar
+
 (async () => {
   try {
     const connection = await pool.getConnection();
@@ -17,6 +17,6 @@ export const pool = mysql.createPool({
     connection.release();
   } catch (error) {
     console.error('❌ Error al conectar con la base de datos:', error.message);
-    process.exit(1); // Detiene la app si no se conecta
+    process.exit(1);
   }
 })();

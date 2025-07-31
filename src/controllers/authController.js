@@ -6,30 +6,29 @@ export const register = async (req, res) => {
   try {
     const { name, email, password } = req.body;
     
-    // Validar que todos los campos estén presentes
+   
     if (!name || !email || !password) {
       return res.status(400).json({ message: 'Todos los campos son requeridos' });
     }
 
-    // Verificar si JWT_SECRET está configurado
+    
     if (!process.env.JWT_SECRET) {
       console.error('❌ JWT_SECRET no está configurado en las variables de entorno');
       return res.status(500).json({ message: 'Error de configuración del servidor' });
     }
 
-    // Verificar si el usuario ya existe
+  
     const [user] = await User.findUserByEmail(email);
     if (user.length) {
       return res.status(400).json({ message: 'El email ya está registrado' });
     }
 
-    // Hashear la contraseña
     const hash = await bcrypt.hash(password, 10);
     
-    // Crear el usuario
+ 
     const [result] = await User.createUser(name, email, hash);
     
-    // Generar el token JWT con el ID del nuevo usuario
+    
     const token = jwt.sign(
       { 
         id: result.insertId,
@@ -40,13 +39,13 @@ export const register = async (req, res) => {
       { expiresIn: '24h' }
     );
 
-    // Log para debug (solo en desarrollo)
+    
     console.log('✅ Usuario registrado exitosamente:', email);
     console.log('🔐 Token JWT generado correctamente');
     console.log('📝 Token (primeros 30 chars):', token.substring(0, 30) + '...');
     console.log('🆔 User ID:', result.insertId);
 
-    // Responder con el token y datos del usuario
+   
     res.status(201).json({
       message: 'Usuario registrado exitosamente',
       token,
